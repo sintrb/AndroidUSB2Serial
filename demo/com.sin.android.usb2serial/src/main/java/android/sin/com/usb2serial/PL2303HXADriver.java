@@ -15,36 +15,35 @@ import android.util.Log;
 public class PL2303HXADriver extends USBSerialDriver {
     private static final String TAG = "PL2303HXADriver";
     /**
-     * PL303HXA产品ID
+     * PL303HXA Product ID
      */
     public static final int PL2303HXA_PRODUCT_ID = 0x2303;
 
-    // 超时
-    private int TimeOut = 100;
+    // Time Control
+    private static int TimeOut = 100;   // ms
     private int transferTimeOut = TimeOut;
     private int readTimeOut = TimeOut;
     private int writeTimeOut = TimeOut;
 
     private Context context;
 
-    private UsbManager usbManager;
-    private UsbDevice usbDevice;
-    private UsbDeviceConnection usbDeviceConnection;
     private UsbInterface usbInterface;
     private UsbEndpoint uein;
     private UsbEndpoint ueout;
     private boolean opened = false;
-    private int baudRate = 115200; // 波特率
+    private int baudRate = 115200; // baudRate bps
 
-    // 收发器属性
+    // sender and receiver control
     private static final int MAX_SENDLEN = 1;
     private static final int SECVBUF_LEN = 4096;
     private static final int SENDBUF_LEN = MAX_SENDLEN;
 
-    // 缓冲区
+    // buffer
     private byte[] recv_buf = new byte[SECVBUF_LEN];
     private byte[] send_buf = new byte[SENDBUF_LEN];
     private long receivecount = 0, sendcount = 0;
+
+
 
     /**
      * Judge the UsbDevice is correct type.
