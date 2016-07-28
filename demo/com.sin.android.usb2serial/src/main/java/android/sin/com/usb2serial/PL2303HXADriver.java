@@ -3,10 +3,8 @@ package android.sin.com.usb2serial;
 import android.content.Context;
 import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
-import android.hardware.usb.UsbManager;
 import android.util.Log;
 
 /**
@@ -14,24 +12,19 @@ import android.util.Log;
  */
 public class PL2303HXADriver extends USBSerialDriver {
     private static final String TAG = "PL2303HXADriver";
+
+
     /**
      * PL303HXA Product ID
      */
     public static final int PL2303HXA_PRODUCT_ID = 0x2303;
 
-    // Time Control
-    private static int TimeOut = 100;   // ms
-    private int transferTimeOut = TimeOut;
-    private int readTimeOut = TimeOut;
-    private int writeTimeOut = TimeOut;
 
-    private Context context;
-
-    private UsbInterface usbInterface;
+    protected UsbInterface usbInterface;
     private UsbEndpoint uein;
     private UsbEndpoint ueout;
     private boolean opened = false;
-    private int baudRate = 115200; // baudRate bps
+
 
     // sender and receiver control
     private static final int MAX_SENDLEN = 1;
@@ -43,6 +36,9 @@ public class PL2303HXADriver extends USBSerialDriver {
     private byte[] send_buf = new byte[SENDBUF_LEN];
     private long receivecount = 0, sendcount = 0;
 
+    public PL2303HXADriver(Context context) {
+        super(context);
+    }
 
 
     /**
@@ -55,7 +51,7 @@ public class PL2303HXADriver extends USBSerialDriver {
         return device.getProductId() == PL2303HXA_PRODUCT_ID;
     }
 
-    public boolean initDriver(UsbDevice usbDevice) throws USBSerialException {
+    public boolean init(UsbDevice usbDevice) throws USBSerialException {
         if (!isSupportedDevice(usbDevice)) {
             throw new USBSerialException("not a supported UsbDevice");
         }
@@ -63,7 +59,7 @@ public class PL2303HXADriver extends USBSerialDriver {
         return true;
     }
 
-    public boolean resetDriver() throws USBSerialException {
+    public boolean open() throws USBSerialException {
         usbDeviceConnection = usbManager.openDevice(usbDevice);
         if (usbDeviceConnection == null) {
             throw new USBSerialException("open UsbDevice failed");
@@ -86,35 +82,92 @@ public class PL2303HXADriver extends USBSerialDriver {
             Log.i(TAG, "get Endpoint ok!");
             usbDeviceConnection.claimInterface(usbInterface, true);
             byte[] buffer = new byte[1];
-            controlTransfer(192, 1, 33924, 0, buffer, 1, transferTimeOut);
-            controlTransfer(64, 1, 1028, 0, null, 0, transferTimeOut);
-            controlTransfer(192, 1, 33924, 0, buffer, 1, transferTimeOut);
-            controlTransfer(192, 1, 33667, 0, buffer, 1, transferTimeOut);
-            controlTransfer(192, 1, 33924, 0, buffer, 1, transferTimeOut);
-            controlTransfer(64, 1, 1028, 1, null, 0, transferTimeOut);
-            controlTransfer(192, 1, 33924, 0, buffer, 1, transferTimeOut);
-            controlTransfer(192, 1, 33667, 0, buffer, 1, transferTimeOut);
-            controlTransfer(64, 1, 0, 1, null, 0, transferTimeOut);
-            controlTransfer(64, 1, 1, 0, null, 0, transferTimeOut);
-            controlTransfer(64, 1, 2, 68, null, 0, transferTimeOut);
+            pl2303_vendor_read(0x8484, 0, buffer, 1);
+            pl2303_vendor_write(0x0404, 0, null, 0);
+            pl2303_vendor_read(0x8484, 0, buffer, 1);
+            pl2303_vendor_read(0x8383, 0, buffer, 1);
+            pl2303_vendor_read(0x8484, 0, buffer, 1);
+            pl2303_vendor_write(0x0404, 1, null, 0);
+            pl2303_vendor_read(0x8484, 0, buffer, 1);
+            pl2303_vendor_read(0x8383, 0, buffer, 1);
+
+            pl2303_vendor_write(0, 1, null, 0);
+            pl2303_vendor_write(1, 0, null, 0);
+
+            // not PL2303_QUIRK_LEGACY
+            pl2303_vendor_write(2, 0x44, null, 0);
+
             reset();
             opened = true;
         }
         return true;
     }
 
-    public void reset() throws USBSerialException {
+
+    public boolean reset() throws USBSerialException {
         byte[] mPortSetting = new byte[7];
-        controlTransfer(161, 33, 0, 0, mPortSetting, 7, transferTimeOut);
+        controlTransfer(0xa1, 0x21, 0, 0, mPortSetting, 7, transferTimeOut);
+
+
+//        int baseline, mantissa, exponent;
+//        int baud = baudRate;
+//	/*
+//	 * Apparently the formula is:
+//	 *   baudrate = 12M * 32 / (mantissa * 4^exponent)
+//	 * where
+//	 *   mantissa = buf[8:0]
+//	 *   exponent = buf[11:9]
+//	 */
+//        baseline = 12000000 * 32;
+//        mantissa = baseline / baud;
+//        if (mantissa == 0)
+//            mantissa = 1;	/* Avoid dividing by zero if baud > 32*12M. */
+//        exponent = 0;
+//        while (mantissa >= 512) {
+//            if (exponent < 7) {
+//                mantissa >>= 2;	/* divide by 4 */
+//                exponent++;
+//            } else {
+//			/* Exponent is maxed. Trim mantissa and leave. */
+//                mantissa = 511;
+//                break;
+//            }
+//        }
+//
+//        mPortSetting[3] = (byte)0x80;
+//        mPortSetting[2] = 0;
+//        mPortSetting[1] = (byte)(exponent << 1 | mantissa >> 8);
+//        mPortSetting[0] = (byte)(mantissa & 0xff);
+
         mPortSetting[0] = (byte) (baudRate & 0xff);
         mPortSetting[1] = (byte) (baudRate >> 8 & 0xff);
         mPortSetting[2] = (byte) (baudRate >> 16 & 0xff);
         mPortSetting[3] = (byte) (baudRate >> 24 & 0xff);
-        mPortSetting[4] = 0;
-        mPortSetting[5] = 0;
-        mPortSetting[6] = 8;
-        controlTransfer(33, 32, 0, 0, mPortSetting, 7, transferTimeOut);
-        controlTransfer(161, 33, 0, 0, mPortSetting, 7, transferTimeOut);
+
+        mPortSetting[4] = (byte) (stopBit == STOPBIT_1D5 ? 1 : (stopBit == STOPBIT_2 ? 2 : 0));
+        mPortSetting[5] = (byte) (parity == PARITY_SPACE ? 4 : (parity == PARITY_MARK ? 3 : (parity == PARITY_EVEN ? 2 : (parity == PARITY_ODD ? 1 : 0))));
+        mPortSetting[6] = dataBit;
+        controlTransfer(0x21, 0x20, 0, 0, mPortSetting, 7, transferTimeOut);
+        controlTransfer(0xa1, 0x21, 0, 0, mPortSetting, 7, transferTimeOut);
+        return true;
+    }
+
+    public boolean close() throws USBSerialException {
+        if (this.opened) {
+            if (usbDeviceConnection.releaseInterface(usbInterface))
+                Log.i(TAG, "releaseInterface()=>ok!");
+            this.usbDeviceConnection = null;
+        }
+        this.opened = false;
+        return true;
+    }
+
+    private int pl2303_vendor_read(int value, int index, byte[] buffer, int length) throws USBSerialException {
+        return this.controlTransfer(0xC0, 1, value, index, buffer, length, transferTimeOut);
+    }
+
+    private int pl2303_vendor_write(int value, int index, byte[] buffer, int length) throws USBSerialException {
+        return this.controlTransfer(0x40, 1, value, index, buffer, length, transferTimeOut);
     }
 
     private int controlTransfer(int requestType, int request, int value, int index, byte[] buffer, int length, int timeout) throws USBSerialException {
@@ -131,22 +184,17 @@ public class PL2303HXADriver extends USBSerialDriver {
         return opened;
     }
 
-    public int write(byte data) {
+    public int write(byte data) throws USBSerialException {
         send_buf[0] = data;
         int ret = usbDeviceConnection.bulkTransfer(ueout, send_buf, 1, writeTimeOut);
         ++sendcount;
         return ret;
     }
 
-    public int write(byte[] datas) {
-        int ret = usbDeviceConnection.bulkTransfer(ueout, datas, datas.length, writeTimeOut);
-        sendcount += ret;
-        return ret;
-    }
-
     private int readix = 0;
     private int readlen = 0;
-    public int read() {
+
+    public int read() throws USBSerialException {
         int ret = 0;
         if (readix >= readlen) {
             readlen = usbDeviceConnection.bulkTransfer(uein, recv_buf, SECVBUF_LEN, readTimeOut);
@@ -159,29 +207,6 @@ public class PL2303HXADriver extends USBSerialDriver {
             return ret;
         } else {
             return -1;
-        }
-    }
-
-    public int getReadTimeOut() {
-        return readTimeOut;
-    }
-
-    public void setReadTimeOut(int readTimeOut) {
-        this.readTimeOut = readTimeOut;
-    }
-
-    public int getWriteTimeOut() {
-        return writeTimeOut;
-    }
-
-    public void setWriteTimeOut(int writeTimeOut) {
-        this.writeTimeOut = writeTimeOut;
-    }
-
-    public void setBaudRate(int baudRate) throws USBSerialException {
-        this.baudRate = baudRate;
-        if (this.isOpened()) {
-            this.reset();
         }
     }
 }

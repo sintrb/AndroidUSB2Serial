@@ -5,7 +5,7 @@ import java.io.IOException;
 /**
  * Created by Sin on 2016/7/28.
  */
-public class USBSerialException extends IOException {
+public class USBSerialException extends Exception {
 
     public USBSerialException() {
     }
