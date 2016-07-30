@@ -1,7 +1,6 @@
 package com.sin.android.usb2serial.demo;
 
 
-import android.app.Activity;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -10,27 +9,35 @@ import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.sin.android.sinlibs.activities.BaseActivity;
+import com.sin.android.sinlibs.adapter.SimpleListAdapter;
+import com.sin.android.sinlibs.adapter.SimpleViewInitor;
 import com.sin.android.sinlibs.base.Callable;
+import com.sin.android.sinlibs.tagtemplate.ViewRender;
 import com.sin.android.sinlibs.utils.InjectUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 
 import com.sin.android.usb2serial.*;
 
 public class MainActivity extends BaseActivity implements View.OnClickListener {
-    public TextView tv_log = null;
+    private TextView tv_log = null;
+    private ListView lv_devices = null;
 
 
     private static final String ACTION_FOR_PERMISSION = MainActivity.class.getName() + ".ACTION_FOR_PERMISSION";
     private UsbManager usbManager;
-    private UsbDevice usbDevice;
+    //    private UsbDevice usbDevice;
     BroadcastReceiver permissionReceiver = new BroadcastReceiver() {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
@@ -45,7 +52,23 @@ public class MainActivity extends BaseActivity implements View.OnClickListener {
         }
     };
 
-    private USBSerialDriver driver = null;
+//    private USBSerialDriver driver = null;
+
+    private DeviceItem deviceItem = null;
+    private List<DeviceItem> deviceItems = new ArrayList<DeviceItem>();
+    private ViewRender render = new ViewRender();
+    private SimpleListAdapter adapter = new SimpleListAdapter(this, deviceItems, new SimpleViewInitor() {
+
+        @Override
+        public View initView(Context context, int i, View view, ViewGroup viewGroup, Object o) {
+            if (view == null) {
+                view = LinearLayout.inflate(MainActivity.this, R.layout.item_device, null);
+            }
+            view.setBackgroundResource(deviceItem == o ? R.drawable.bg_ligth : 0);
+            render.renderView(view, o);
+            return view;
+        }
+    });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,6 +94,22 @@ public class MainActivity extends BaseActivity implements View.OnClickListener {
                 return false;
             }
         });
+
+
+        // Devices
+        lv_devices.setAdapter(adapter);
+        lv_devices.setOnItemClickListener(new ListView.OnItemClickListener() {
+
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                deviceItem = deviceItems.get(position);
+                adapter.notifyDataSetChanged();
+            }
+        });
+
+        // driver
+        USBSerial.registerDriver(CP210XDriver.ID_TABLE, CP210XDriver.class);
+        USBSerial.registerDriver(PL2303Driver.ID_TABLE, PL2303Driver.class);
     }
 
     @Override
@@ -91,29 +130,35 @@ public class MainActivity extends BaseActivity implements View.OnClickListener {
 
     @Override
     public void onClick(View v) {
+        final USBSerialDriver driver = deviceItem != null ? deviceItem.driver : null;
+        final UsbDevice usbDevice = deviceItem != null ? deviceItem.device : null;
         switch (v.getId()) {
             case R.id.btn_list: {
                 addLog("List:");
-                asynCall(new Callable() {
+                asynCallAndShowProcessDlg("waitting...", new Callable() {
                     @Override
                     public void call(Object... arg0) {
                         HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
                         Iterator<UsbDevice> deviceIterator = deviceList.values().iterator();
+                        deviceItems.clear();
                         while (deviceIterator.hasNext()) {
-                            UsbDevice device = deviceIterator.next();
-                            String ln = ("devicename" + device.getDeviceName()) + "\r\n" +
-                                    ("deviceid" + String.format("%04X", device.getDeviceId())) + "\r\n" +
-                                    ("vendorid" + String.format("%04X", device.getVendorId())) + "\r\n" +
-                                    ("productid" + String.format("%04X", device.getProductId())) + "\r\n" +
-                                    ("deviceclass" + String.format("%02X", device.getDeviceClass())) + "\r\n" +
-                                    ("deviceprotocol" + String.format("%02X", device.getDeviceProtocol())) + "\r\n" +
-                                    ("devicesubclass" + String.format("%02X", device.getDeviceSubclass())) + "\r\n" +
-                                    ("interfacecount" + String.format("%02X", device.getInterfaceCount()));
-
-                            addLog(ln);
-                            usbDevice = device;
-                            break;
+                            UsbDevice d = deviceIterator.next();
+                            DeviceItem di= new DeviceItem(d,null);
+                            try{
+                                di.driver = USBSerial.createDriver(MainActivity.this, d.getVendorId(),d.getProductId());
+                            }
+                            catch (Exception e){
+                                e.printStackTrace();
+                            }
+                            deviceItems.add(di);
+                            addLog(d.getDeviceName());
                         }
+                        safeCall(new Callable() {
+                            @Override
+                            public void call(Object... objects) {
+                                adapter.notifyDataSetChanged();
+                            }
+                        });
                     }
                 });
                 break;
@@ -125,7 +170,27 @@ public class MainActivity extends BaseActivity implements View.OnClickListener {
                     PendingIntent mPermissionIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_FOR_PERMISSION), 0);
                     usbManager.requestPermission(usbDevice, mPermissionIntent);
                 } else {
-                    whenHadPermission();
+                    addLog("打开设备!");
+                    if (usbDevice == null) {
+                        addLog("设备不存在!");
+                        return;
+                    }
+                    if(driver==null){
+                        addLog("没有合适的驱动!");
+                        return;
+                    }
+                    if (driver.isOpened()) {
+                        addLog("设备已打开!!");
+                    } else {
+                        try {
+                            driver.config(115200);
+                            driver.init(usbDevice);
+                            driver.open();
+                        } catch (USBSerialException e) {
+                            e.printStackTrace();
+                            addLog(e.getMessage());
+                        }
+                    }
                 }
                 break;
             }
@@ -145,7 +210,6 @@ public class MainActivity extends BaseActivity implements View.OnClickListener {
                                 e.printStackTrace();
                                 addLog(e.getMessage());
                             }
-
                         }
                     });
                 }
@@ -167,7 +231,6 @@ public class MainActivity extends BaseActivity implements View.OnClickListener {
                                 e.printStackTrace();
                                 addLog(e.getMessage());
                             }
-
                         }
                     });
                 }
@@ -228,26 +291,6 @@ public class MainActivity extends BaseActivity implements View.OnClickListener {
     }
 
     private void whenHadPermission() {
-        addLog("打开设备!");
-        if (usbDevice == null) {
-            addLog("设备不存在!");
-            return;
-        }
-        if (driver == null) {
-            driver = new PL2303HXADriver(this);
-        }
-        if (driver.isOpened()) {
-            addLog("设备已打开!!");
-        } else {
-            try {
-                driver.config(115200);
-                driver.init(usbDevice);
-                driver.open();
-            } catch (USBSerialException e) {
-                e.printStackTrace();
-                addLog(e.getMessage());
-            }
-        }
-//        usbManager.openDevice(usbDevice);
+
     }
 }

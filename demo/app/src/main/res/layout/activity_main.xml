@@ -15,42 +15,61 @@
             android:id="@+id/btn_list"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="List" />
+            android:text="List"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
 
         <Button
             android:id="@+id/btn_open"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Open" />
+            android:text="Open"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
 
         <Button
             android:id="@+id/btn_send"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Send" />
+            android:text="Send"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
 
         <Button
             android:id="@+id/btn_read"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Read" />
+            android:text="Read"
+
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+
         <Button
             android:id="@+id/btn_test"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Test" />
+            android:text="Test"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
     </LinearLayout>
+
+    <ListView
+        android:id="@+id/lv_devices"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_margin="2px"
+        android:layout_weight="1"
+        android:background="@drawable/bg_border"
+        android:padding="2px" />
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_margin="2px"
+        android:layout_weight="1"
+        android:background="@drawable/bg_border"
+        android:padding="2px">
 
         <TextView
             android:id="@+id/tv_log"
-            android:padding="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:padding="3dp"
             android:textAppearance="?android:attr/textAppearanceSmall" />
     </ScrollView>
 
